@@ -27,26 +27,48 @@ def calculate_portfolio_summary(transactions, prices):
     # Konwersja na DataFrame dla łatwiejszych obliczeń
     df = pd.DataFrame(transactions, columns=['id', 'symbol', 'asset_type', 'transaction_type', 'quantity', 'price_per_unit', 'date'])
     df['cost'] = df['quantity'] * df['price_per_unit']
+    df['date'] = pd.to_datetime(df['date']) # Konwersja daty dla sortowania
+    df = df.sort_values(by='date')
 
     holdings = {}
+    realized_pnl_per_sale = {}
+    total_realized_pnl = 0
+
     for symbol, group in df.groupby('symbol'):
-        buys = group[group['transaction_type'] == 'buy']
-        sells = group[group['transaction_type'] == 'sell']
+        buys = group[group['transaction_type'] == 'buy'].to_dict('records')
+        sells = group[group['transaction_type'] == 'sell'].to_dict('records')
 
-        total_quantity_bought = buys['quantity'].sum()
-        total_cost_of_buys = buys['cost'].sum()
-        total_quantity_sold = sells['quantity'].sum()
+        # Obliczanie zrealizowanego P/L metodą FIFO
+        for sale in sells:
+            sale_quantity = sale['quantity']
+            sale_proceeds = sale['cost']
+            cost_of_sale = 0
 
-        current_quantity = total_quantity_bought - total_quantity_sold
+            temp_buys = []
+            for buy in buys:
+                if sale_quantity <= 0:
+                    temp_buys.append(buy)
+                    continue
 
-        if current_quantity > 0.000001: # Unikanie problemów z precyzją float
-            # Średnia cena zakupu dla posiadanych aktywów
-            avg_buy_price = total_cost_of_buys / total_quantity_bought if total_quantity_bought > 0 else 0
-            cost_basis = current_quantity * avg_buy_price
+                buy_qty_to_use = min(sale_quantity, buy['quantity'])
+                cost_of_sale += buy_qty_to_use * buy['price_per_unit']
 
-            # Pobieranie aktualnej ceny
+                buy['quantity'] -= buy_qty_to_use
+                sale_quantity -= buy_qty_to_use
+
+                if buy['quantity'] > 0.000001:
+                    temp_buys.append(buy)
+
+            buys = temp_buys
+            realized_pnl = sale_proceeds - cost_of_sale
+            realized_pnl_per_sale[sale['id']] = realized_pnl
+            total_realized_pnl += realized_pnl
+
+        # Obliczanie aktualnie posiadanych aktywów
+        current_quantity = sum(b['quantity'] for b in buys)
+        if current_quantity > 0.000001:
+            cost_basis = sum(b['quantity'] * b['price_per_unit'] for b in buys)
             current_price = prices.get(symbol, 0)
-            # Wartość rynkowa tylko dla aktywów z aktualną ceną
             market_value = current_quantity * current_price if current_price else 0.0
 
             holdings[symbol] = {
@@ -89,5 +111,7 @@ def calculate_portfolio_summary(transactions, prices):
         'unrealized_pnl_percent': unrealized_pnl_percent,
         'holdings': holdings,
         'allocation_by_asset': allocation_by_asset,
-        'allocation_by_type': allocation_by_type
+        'allocation_by_type': allocation_by_type,
+        'total_realized_pnl': total_realized_pnl,
+        'realized_pnl_per_sale': realized_pnl_per_sale
     }

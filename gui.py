@@ -6,6 +6,9 @@ from datetime import datetime
 import database
 import api_handler
 import calculator
+import sv_ttk
+import numpy as np
+import matplotlib.pyplot as plt
 
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -14,12 +17,19 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Menedżer Portfela Inwestycyjnego")
-        self.geometry("1200x800") # Zwiększamy rozmiar okna
+        self.geometry("1200x800")
+
+        # Ustawienie nowoczesnego motywu
+        sv_ttk.set_theme("dark")
 
         # Inicjalizacja bazy danych
         database.init_db()
 
+        self.assets_map = {} # Słownik do mapowania symbol -> (nazwa, typ)
+
         self.create_widgets()
+
+        self.update_symbol_combobox() # Początkowe wypełnienie listy symboli
 
     def create_widgets(self):
         # Główny kontener
@@ -42,17 +52,32 @@ class App(tk.Tk):
         self.total_value_label.pack(anchor=tk.W)
         self.pnl_label = ttk.Label(summary_frame, text="Zysk/Strata (Niezrealiz.): $0.00 (0.00%)")
         self.pnl_label.pack(anchor=tk.W)
+        self.realized_pnl_label = ttk.Label(summary_frame, text="Zysk/Strata (Zrealiz.): $0.00")
+        self.realized_pnl_label.pack(anchor=tk.W)
 
         # --- Wykres alokacji ---
         chart_frame = ttk.LabelFrame(left_pane, text="Alokacja aktywów", padding="10")
         chart_frame.pack(fill=tk.BOTH, expand=True, pady=5)
 
-        self.fig = Figure(figsize=(4, 4), dpi=100)
+        # Lista rozwijana do filtrowania wykresu
+        self.chart_filter_var = tk.StringVar(value="wg aktywów")
+        chart_filter_options = ["wg aktywów", "wg typu"]
+        chart_filter_combobox = ttk.Combobox(
+            chart_frame,
+            textvariable=self.chart_filter_var,
+            values=chart_filter_options,
+            state="readonly"
+        )
+        chart_filter_combobox.pack(pady=(0, 10), fill=tk.X)
+        chart_filter_combobox.bind("<<ComboboxSelected>>", lambda e: self.refresh_transactions_view())
+
+        # Konfiguracja wykresu dla ciemnego motywu
+        self.fig = Figure(figsize=(5, 4), dpi=100, facecolor="#2B2B2B")
         self.ax = self.fig.add_subplot(111)
+        self.fig.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)
+
         self.canvas = FigureCanvasTkAgg(self.fig, master=chart_frame)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-        self.ax.pie([1], labels=['Brak danych'], autopct='%1.1f%%', startangle=90)
-        self.ax.axis('equal') # Zapewnia, że wykres jest kołem
 
         # --- Formularz dodawania transakcji ---
         form_frame = ttk.LabelFrame(right_pane, text="Dodaj nową transakcję", padding="10")
@@ -61,17 +86,23 @@ class App(tk.Tk):
         # Pola formularza
         self.symbol_var = tk.StringVar()
         ttk.Label(form_frame, text="Symbol:").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
-        ttk.Entry(form_frame, textvariable=self.symbol_var).grid(row=0, column=1, padx=5, pady=5)
+        self.symbol_combobox = ttk.Combobox(form_frame, textvariable=self.symbol_var)
+        self.symbol_combobox.grid(row=0, column=1, padx=5, pady=5)
+        # Powiązanie zdarzeń z funkcją autouzupełniania
+        self.symbol_combobox.bind('<<ComboboxSelected>>', self.on_symbol_change)
+        self.symbol_combobox.bind('<KeyRelease>', self.on_symbol_change)
 
         self.name_var = tk.StringVar()
         ttk.Label(form_frame, text="Nazwa:").grid(row=0, column=2, padx=5, pady=5, sticky=tk.W)
-        ttk.Entry(form_frame, textvariable=self.name_var).grid(row=0, column=3, padx=5, pady=5)
+        self.name_entry = ttk.Entry(form_frame, textvariable=self.name_var)
+        self.name_entry.grid(row=0, column=3, padx=5, pady=5)
 
         self.asset_type_var = tk.StringVar()
-        asset_types = ['kryptowaluta', 'akcja', 'etf', 'waluta', 'surowiec', 'nieruchomosc']
+        self.asset_types = ['kryptowaluta', 'akcja', 'etf', 'waluta', 'surowiec', 'nieruchomosc']
         ttk.Label(form_frame, text="Typ aktywa:").grid(row=1, column=0, padx=5, pady=5, sticky=tk.W)
-        ttk.Combobox(form_frame, textvariable=self.asset_type_var, values=asset_types, state="readonly").grid(row=1, column=1, padx=5, pady=5)
-        self.asset_type_var.set(asset_types[0])
+        self.asset_type_combobox = ttk.Combobox(form_frame, textvariable=self.asset_type_var, values=self.asset_types, state="readonly")
+        self.asset_type_combobox.grid(row=1, column=1, padx=5, pady=5)
+        self.asset_type_var.set(self.asset_types[0])
 
         self.transaction_type_var = tk.StringVar()
         transaction_types = ['buy', 'sell']
@@ -101,16 +132,17 @@ class App(tk.Tk):
 
         self.tree = ttk.Treeview(
             transactions_frame,
-            columns=('ID', 'Symbol', 'Typ', 'Ilość', 'Cena zakupu', 'Aktualna cena', 'Wartość', 'Data'),
+            columns=('ID', 'Symbol', 'Typ', 'Rodzaj', 'Ilość', 'Cena', 'Wartość', 'Zrealizowany Z/S', 'Data'),
             show='headings'
         )
         self.tree.heading('ID', text='ID')
         self.tree.heading('Symbol', text='Symbol')
         self.tree.heading('Typ', text='Typ aktywa')
+        self.tree.heading('Rodzaj', text='Rodzaj')
         self.tree.heading('Ilość', text='Ilość')
-        self.tree.heading('Cena zakupu', text='Cena zakupu')
-        self.tree.heading('Aktualna cena', text='Aktualna cena')
-        self.tree.heading('Wartość', text='Wartość ($)')
+        self.tree.heading('Cena', text='Cena jedn.')
+        self.tree.heading('Wartość', text='Wartość trans.')
+        self.tree.heading('Zrealizowany Z/S', text='Zrealiz. Z/S')
         self.tree.heading('Data', text='Data')
 
         # Ustawienie szerokości kolumn
@@ -128,6 +160,28 @@ class App(tk.Tk):
 
         # Wypełnienie danymi przy starcie
         self.refresh_transactions_view()
+
+    def update_symbol_combobox(self):
+        """Pobiera wszystkie aktywa z bazy i aktualizuje listę w comboboxie."""
+        assets = database.get_all_assets()
+        self.assets_map = {asset[0]: (asset[1], asset[2]) for asset in assets}
+        self.symbol_combobox['values'] = sorted(list(self.assets_map.keys()))
+
+    def on_symbol_change(self, event=None):
+        """
+        Wywoływana, gdy użytkownik wybierze lub wpisze symbol.
+        Automatycznie uzupełnia nazwę i typ aktywa, jeśli symbol jest znany.
+        """
+        symbol = self.symbol_var.get().upper()
+        if symbol in self.assets_map:
+            name, asset_type = self.assets_map[symbol]
+            self.name_var.set(name)
+            self.asset_type_var.set(asset_type)
+            self.name_entry.config(state='readonly')
+            self.asset_type_combobox.config(state='readonly')
+        else:
+            self.name_entry.config(state='normal')
+            self.asset_type_combobox.config(state='normal')
 
     def refresh_transactions_view(self):
         # 1. Czyszczenie widoku
@@ -149,30 +203,91 @@ class App(tk.Tk):
 
         # 4. Aktualizacja dashboardu
         self.total_value_label.config(text=f"Całkowita wartość: ${summary['total_value']:.2f}")
-        pnl_amount = summary['unrealized_pnl_amount']
-        pnl_percent = summary['unrealized_pnl_percent']
-        pnl_color = "green" if pnl_amount >= 0 else "red"
+
+        unrealized_pnl = summary['unrealized_pnl_amount']
+        unrealized_pnl_percent = summary['unrealized_pnl_percent']
         self.pnl_label.config(
-            text=f"Zysk/Strata: ${pnl_amount:.2f} ({pnl_percent:.2f}%)",
-            foreground=pnl_color
+            text=f"Zysk/Strata (Niezrealiz.): ${unrealized_pnl:.2f} ({unrealized_pnl_percent:.2f}%)",
+            foreground="green" if unrealized_pnl >= 0 else "red"
         )
 
-        # 5. Aktualizacja tabeli transakcji (zostaje bez zmian, ale teraz jest częścią większego procesu)
+        realized_pnl = summary['total_realized_pnl']
+        self.realized_pnl_label.config(
+            text=f"Zysk/Strata (Zrealiz.): ${realized_pnl:.2f}",
+            foreground="green" if realized_pnl >= 0 else "red"
+        )
+
+        # 5. Aktualizacja tabeli transakcji
         for t in transactions:
-            asset_id, symbol, asset_type, _, quantity, price, date = t
-            current_price_val = prices.get(symbol)
-            current_price_str = f"{current_price_val:.2f}" if current_price_val else "N/A"
-            current_value_str = f"{(quantity * current_price_val):.2f}" if current_price_val else "N/A"
-            self.tree.insert('', tk.END, values=(asset_id, symbol, asset_type, f"{quantity:.6f}", f"{price:.2f}", current_price_str, current_value_str, date))
+            t_id, symbol, asset_type, trans_type, quantity, price, date = t
+
+            transaction_value = quantity * price
+            realized_pnl_str = ""
+
+            if trans_type == 'sell':
+                pnl = summary['realized_pnl_per_sale'].get(t_id, 0)
+                realized_pnl_str = f"${pnl:.2f}"
+
+            self.tree.insert('', tk.END, values=(
+                t_id, symbol, asset_type, trans_type, f"{quantity:.6f}", f"{price:.2f}",
+                f"${transaction_value:.2f}", realized_pnl_str, date
+            ))
 
         # 6. Aktualizacja wykresu alokacji
+        chart_mode = self.chart_filter_var.get()
+        if chart_mode == "wg aktywów":
+            data_to_display = summary['allocation_by_asset']
+            legend_title = "Aktywa"
+        else: # "wg typu"
+            data_to_display = summary['allocation_by_type']
+            legend_title = "Typy Aktywów"
+
+        self.update_pie_chart(data_to_display, legend_title)
+
+    def update_pie_chart(self, allocation_data, title):
+        """Rysuje wykres kołowy na podstawie danych o alokacji."""
         self.ax.clear()
-        if summary['allocation_by_asset']:
-            labels = summary['allocation_by_asset'].keys()
-            sizes = summary['allocation_by_asset'].values()
-            self.ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140)
+        self.ax.set_facecolor("#2B2B2B") # Tło osi wykresu
+
+        if allocation_data:
+            labels = list(allocation_data.keys())
+            sizes = list(allocation_data.values())
+
+            # Lepsza paleta kolorów, bardziej widoczna na ciemnym tle
+            colors = plt.get_cmap('viridis')(np.linspace(0, 1, len(labels)))
+
+            wedges, texts, autotexts = self.ax.pie(
+                sizes,
+                autopct='%1.1f%%',
+                startangle=140,
+                colors=colors,
+                pctdistance=0.85, # Odległość procentów od środka
+                wedgeprops={'edgecolor': '#2B2B2B', 'linewidth': 1} # Krawędzie kawałków
+            )
+
+            # Ustawienie koloru tekstu na biały
+            for text in texts + autotexts:
+                text.set_color('white')
+
+            # Rysowanie okręgu w środku, aby stworzyć "donut chart"
+            centre_circle = plt.Circle((0,0),0.70,fc='#2B2B2B')
+            self.fig.gca().add_artist(centre_circle)
+
+            # Dodanie legendy z dynamicznym tytułem
+            self.ax.legend(wedges, labels,
+                  title=title,
+                  loc="center left",
+                  bbox_to_anchor=(1, 0, 0.5, 1),
+                  frameon=False, # Bez ramki
+                  labelcolor='white',
+                  title_fontproperties={'color': 'white', 'weight': 'bold'})
+
         else:
-            self.ax.pie([1], labels=['Brak danych'], autopct='%1.1f%%', startangle=90)
+            self.ax.pie([1], labels=['Brak danych'],
+                        labelcolor='white',
+                        colors=['#3C3F41'],
+                        startangle=90)
+
         self.ax.axis('equal')
         self.canvas.draw()
 
@@ -203,7 +318,8 @@ class App(tk.Tk):
             )
             messagebox.showinfo("Sukces", "Transakcja została dodana pomyślnie.")
             self.clear_form()
-            self.refresh_transactions_view() # Odśwież widok po dodaniu
+            self.refresh_transactions_view()
+            self.update_symbol_combobox()
         except Exception as e:
             messagebox.showerror("Błąd bazy danych", f"Wystąpił błąd: {e}")
 
@@ -212,6 +328,10 @@ class App(tk.Tk):
         self.name_var.set("")
         self.quantity_var.set(0.0)
         self.price_var.set(0.0)
+        # Odblokowujemy pola na wypadek, gdyby były zablokowane
+        self.name_entry.config(state='normal')
+        self.asset_type_combobox.config(state='normal')
+        self.symbol_combobox.focus()
 
 if __name__ == '__main__':
     app = App()

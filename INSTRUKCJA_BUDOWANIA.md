@@ -1,6 +1,6 @@
-# Instrukcja Budowania Aplikacji (.exe)
+# Instrukcja Budowania i Debugowania Aplikacji (.exe)
 
-Aby zbudować plik wykonywalny `.exe` z dostarczonego kodu źródłowego, postępuj zgodnie z poniższymi krokami. Proces ten został w pełni zautomatyzowany za pomocą PyInstallera i wymaga jedynie wykonania kilku komend.
+Celem tej instrukcji jest nie tylko zbudowanie aplikacji, ale przede wszystkim **znalezienie przyczyny błędu**, który wystąpił wcześniej. Proszę, postępuj dokładnie według poniższych kroków.
 
 ## Wymagania wstępne
 
@@ -16,7 +16,7 @@ Otwórz wiersz poleceń (Command Prompt lub PowerShell) w folderze głównym pro
 
 ### 2. Zainstaluj zależności
 
-W wierszu poleceń wpisz następującą komendę, aby zainstalować wszystkie wymagane biblioteki:
+Jeśli nie zrobiłeś tego wcześniej, wpisz następującą komendę, aby zainstalować wszystkie wymagane biblioteki:
 
 ```bash
 pip install -r requirements.txt
@@ -24,20 +24,22 @@ pip install -r requirements.txt
 
 Poczekaj, aż wszystkie pakiety zostaną pobrane i zainstalowane.
 
-### 3. Zbuduj plik .exe
+### 3. Zbuduj plik .exe w trybie debugowania
 
-Gdy zależności są już zainstalowane, użyj poniższej komendy, aby uruchomić proces budowania za pomocą PyInstallera. Konfiguracja (`main.spec`) jest już w pełni przygotowana.
+Użyj poniższej komendy, aby uruchomić proces budowania. Używamy nowej konfiguracji `main.spec`, która stworzy plik `.exe` z **aktywnym oknem konsoli do debugowania**.
 
 ```bash
 pyinstaller main.spec
 ```
 
-PyInstaller przeanalizuje kod, zbierze wszystkie potrzebne pliki i spakuje je w jeden plik wykonywalny.
+### 4. Uruchom aplikację i zdiagnozuj problem
 
-### 4. Znajdź gotową aplikację
+Po zakończeniu budowania, w folderze projektu pojawi się nowy katalog o nazwie `dist`.
 
-Po zakończeniu procesu budowania (może to potrwać kilka minut), w folderze projektu pojawi się nowy katalog o nazwie `dist`.
+1.  Przejdź do folderu `dist`. Znajdziesz tam plik **`PortfolioManager_Debug.exe`**.
+2.  **Uruchom ten plik.** Powinny pojawić się dwa okna: główne okno aplikacji oraz **czarne okno konsoli**.
+3.  Jeśli aplikacja się zawiesi lub nie uruchomi, **skup się na oknie konsoli**.
+4.  **Skopiuj całą treść, która pojawiła się w czarnym oknie konsoli** – zwłaszcza jeśli zawiera komunikaty o błędach (słowa takie jak `Error`, `Traceback`, `Failed`).
+5.  **Prześlij mi skopiowany tekst.** To kluczowa informacja, która pozwoli mi zidentyfikować i naprawić problem.
 
-Przejdź do folderu `dist`. W środku znajdziesz gotową do uruchomienia aplikację: **`PortfolioManager.exe`**.
-
-Możesz skopiować ten plik w dowolne miejsce na swoim komputerze i uruchomić go. Aplikacja jest w pełni samodzielna i nie wymaga żadnych dodatkowych instalacji.
+Dziękuję za Twoją pomoc w tym procesie! Razem na pewno uda nam się to naprawić.

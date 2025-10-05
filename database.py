@@ -65,6 +65,13 @@ def add_transaction(symbol, name, asset_type, transaction_type, quantity, price_
         conn.commit()
         print(f"Dodano transakcję: {transaction_type} {quantity} {symbol} po cenie {price_per_unit}")
 
+def get_all_assets():
+    """Pobiera listę wszystkich unikalnych aktywów z bazy danych."""
+    with sqlite3.connect(DB_NAME) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT symbol, name, asset_type FROM assets ORDER BY symbol ASC")
+        return cursor.fetchall()
+
 def get_all_transactions():
     """Pobiera wszystkie transakcje z ich aktywami."""
     with sqlite3.connect(DB_NAME) as conn:

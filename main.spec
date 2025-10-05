@@ -1,7 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-from PyInstaller.utils.hooks import collect_data_files
-
 block_cipher = None
 
 a = Analysis(
@@ -9,9 +7,9 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[],
-    hiddenimports=['pandas', 'matplotlib.backends.backend_tkagg', 'babel.numbers'],
+    # Dodajemy 'ukryte' importy, których PyInstaller może sam nie znaleźć
+    hiddenimports=['pandas', 'matplotlib.backends.backend_tkagg', 'pytz', 'babel.numbers', 'sv_ttk'],
     hookspath=[],
-    hooksconfig={},
     runtime_hooks=[],
     excludes=[],
     win_no_prefer_redirects=False,
@@ -19,14 +17,6 @@ a = Analysis(
     cipher=block_cipher,
     noarchive=False,
 )
-
-# Dołączenie plików danych dla kluczowych bibliotek
-a.datas += collect_data_files('matplotlib')
-a.datas += collect_data_files('pandas')
-a.datas += collect_data_files('pytz')
-a.datas += collect_data_files('tzdata')
-
-
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
@@ -34,18 +24,17 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='PortfolioManager',
+    name='PortfolioManager', # Finalna nazwa aplikacji
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,
+    console=False, # Wyłączamy konsolę dla wersji produkcyjnej
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None # Tutaj można dodać ścieżkę do pliku .ico
 )
 
 coll = COLLECT(
@@ -56,5 +45,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='PortfolioManager'
+    name='PortfolioManager',
 )
