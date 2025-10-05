@@ -1,7 +1,8 @@
 # gui.py
 # Interfejs użytkownika
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
+import csv
 from datetime import datetime
 import database
 import api_handler
@@ -16,7 +17,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 # --- Strony Aplikacji ---
 
-class DashboardPage(ttk.Frame):
+class MainPage(ttk.Frame):
     """Strona główna z nowym, zaawansowanym dashboardem opartym na zakładkach."""
     def __init__(self, parent, controller):
         super().__init__(parent)
@@ -66,14 +67,12 @@ class AddTransactionPage(ttk.Frame):
         form_frame = ttk.LabelFrame(self, text="Dodaj nową transakcję", padding="10")
         form_frame.pack(fill=tk.X, pady=10, padx=10)
 
-        # Krok 1: Wybór typu aktywa
         self.asset_type_var = tk.StringVar()
         ttk.Label(form_frame, text="1. Typ Aktywa:").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
-        self.asset_type_combobox = ttk.Combobox(form_frame, textvariable=self.asset_type_var, values=['kryptowaluta', 'akcja', 'waluta'], state="readonly")
+        self.asset_type_combobox = ttk.Combobox(form_frame, textvariable=self.asset_type_var, values=['Kryptowaluta', 'Akcja', 'Waluta'], state="readonly")
         self.asset_type_combobox.grid(row=0, column=1, padx=5, pady=5)
         self.asset_type_combobox.bind("<<ComboboxSelected>>", self.on_asset_type_select)
 
-        # Krok 2: Wyszukiwanie i wybór symbolu
         self.name_var = tk.StringVar()
         ttk.Label(form_frame, text="2. Wyszukaj Nazwę:").grid(row=1, column=0, padx=5, pady=5, sticky=tk.W)
         self.name_entry = ttk.Entry(form_frame, textvariable=self.name_var, state="disabled")
@@ -86,10 +85,9 @@ class AddTransactionPage(ttk.Frame):
         self.symbol_combobox.grid(row=2, column=1, padx=5, pady=5)
         self.symbol_combobox.bind('<<ComboboxSelected>>', self.on_symbol_select)
 
-        # Krok 3: Dane transakcji
-        self.transaction_type_var = tk.StringVar(value='buy')
+        self.transaction_type_var = tk.StringVar(value='Buy')
         ttk.Label(form_frame, text="4. Typ Transakcji:").grid(row=3, column=0, padx=5, pady=5, sticky=tk.W)
-        ttk.Combobox(form_frame, textvariable=self.transaction_type_var, values=['buy', 'sell'], state="readonly").grid(row=3, column=1, padx=5, pady=5)
+        ttk.Combobox(form_frame, textvariable=self.transaction_type_var, values=['Buy', 'Sell'], state="readonly").grid(row=3, column=1, padx=5, pady=5)
 
         self.quantity_var = tk.DoubleVar()
         ttk.Label(form_frame, text="Ilość:").grid(row=3, column=2, padx=5, pady=5, sticky=tk.W)
@@ -110,70 +108,51 @@ class AddTransactionPage(ttk.Frame):
         self.filter_symbols()
 
     def filter_symbols(self, event=None):
-        asset_type = self.asset_type_var.get()
+        asset_type = self.asset_type_var.get().lower()
         search_term = self.name_var.get().lower()
-
         if not asset_type: return
-
         full_list = self.controller.instruments_by_type.get(asset_type, [])
-
         if not search_term:
             self.symbol_combobox['values'] = [item[0] for item in full_list]
         else:
             filtered_list = [item[0] for item in full_list if search_term in item[1].lower()]
             self.symbol_combobox['values'] = filtered_list
-
-        self.symbol_var.set("")
-        self.current_price_label.config(text="Aktualna cena: -")
+        self.symbol_var.set(""); self.current_price_label.config(text="Aktualna cena: -")
 
     def on_symbol_select(self, event=None):
-        symbol = self.symbol_var.get()
-        asset_type = self.asset_type_var.get()
-
+        symbol, asset_type = self.symbol_var.get(), self.asset_type_var.get().lower()
         if not symbol or not asset_type: return
-
-        # Aktualizacja nazwy na podstawie wybranego symbolu
         full_list = self.controller.instruments_by_type.get(asset_type, [])
         for item_symbol, item_name in full_list:
-            if item_symbol == symbol:
-                self.name_var.set(item_name)
-                break
-
-        # Pobranie i wyświetlenie aktualnej ceny
+            if item_symbol == symbol: self.name_var.set(item_name); break
         price_data = api_handler.get_prices_for_transactions([('', symbol, asset_type)], self.controller.base_currency.get())
         price = price_data.get(symbol)
-        if price:
-            self.current_price_label.config(text=f"Aktualna cena: {price:.4f} {self.controller.base_currency.get()}")
-        else:
-            self.current_price_label.config(text="Aktualna cena: Błąd")
+        if price: self.current_price_label.config(text=f"Aktualna cena: {price:.4f} {self.controller.base_currency.get()}")
+        else: self.current_price_label.config(text="Aktualna cena: Błąd")
 
     def add_new_transaction(self):
-        # ... logika dodawania transakcji ...
-        symbol, name, asset_type = self.symbol_var.get().upper(), self.name_var.get(), self.asset_type_var.get()
-        trans_type, quantity, price = self.transaction_type_var.get(), self.quantity_var.get(), self.price_var.get()
+        symbol, asset_type = self.symbol_var.get().upper(), self.asset_type_var.get().lower()
+        trans_type, quantity, price = self.transaction_type_var.get().lower(), self.quantity_var.get(), self.price_var.get()
         if not all([symbol, asset_type, trans_type, quantity > 0, price > 0]):
-            messagebox.showerror("Błąd", "Wszystkie pola (oprócz nazwy) muszą być poprawnie wypełnione.")
+            messagebox.showerror("Błąd", "Wszystkie pola muszą być poprawnie wypełnione.")
             return
-        # Używamy nazwy z mapy, jeśli istnieje, wpp. z pola
         name_to_db = self.name_var.get() if self.name_var.get() else symbol
-
         try:
             database.add_transaction(symbol, name_to_db, asset_type, trans_type, quantity, price, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-            messagebox.showinfo("Sukces", "Transakcja została dodana pomyślnie.")
+            self.controller.show_toast("Transakcja dodana pomyślnie!")
             self.clear_form()
             self.controller.refresh_all_data()
         except Exception as e:
             messagebox.showerror("Błąd bazy danych", f"Wystąpił błąd: {e}")
 
     def clear_form(self):
-        self.asset_type_var.set("")
-        self.name_var.set(""); self.name_entry.config(state="disabled")
+        self.asset_type_var.set(""); self.name_var.set(""); self.name_entry.config(state="disabled")
         self.symbol_var.set(""); self.symbol_combobox.config(state="disabled")
         self.quantity_var.set(0.0); self.price_var.set(0.0)
         self.current_price_label.config(text="Aktualna cena: -")
 
-class AllocationPage(ttk.Frame):
-    # ... bez zmian ...
+class ChartsPage(ttk.Frame):
+    """Strona z wykresem alokacji."""
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
@@ -183,14 +162,17 @@ class AllocationPage(ttk.Frame):
         ttk.Combobox(chart_frame, textvariable=self.chart_filter_var, values=["wg aktywów", "wg typu"], state="readonly").pack(pady=(0, 10), fill=tk.X)
         self.chart_filter_var.trace_add("write", lambda *_: self.controller.refresh_all_data())
         self.fig = Figure(figsize=(5, 4), dpi=100)
+        self.fig.subplots_adjust(right=0.7)
         self.ax = self.fig.add_subplot(111)
         self.canvas = FigureCanvasTkAgg(self.fig, master=chart_frame)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
     def refresh(self, summary):
         mode = self.chart_filter_var.get()
         data = summary['allocation_by_asset'] if mode == "wg aktywów" else summary['allocation_by_type']
         title = "Alokacja wg Aktywów" if mode == "wg aktywów" else "Alokacja wg Typu"
         self.update_pie_chart(data, title)
+
     def update_pie_chart(self, data, title):
         self.ax.clear()
         theme_bg = "#2B2B2B" if sv_ttk.get_theme() == "dark" else "#FFFFFF"
@@ -205,28 +187,120 @@ class AllocationPage(ttk.Frame):
             legend = self.ax.legend(wedges, labels, title=title, loc="center left", bbox_to_anchor=(1, 0, 0.5, 1), frameon=False, labelcolor=theme_fg, title_fontproperties={'weight': 'bold'})
             legend.get_title().set_color(theme_fg)
         else:
-            self.ax.pie([1], labels=['Brak danych'], colors=['#3C3F41' if sv_ttk.get_theme() == "dark" else "#E0E0E0"])
+            _, texts = self.ax.pie([1], labels=['Brak danych'], colors=['#3C3F41' if sv_ttk.get_theme() == "dark" else "#E0E0E0"], startangle=90)
+            for text in texts: text.set_color(theme_fg)
         self.ax.axis('equal'); self.canvas.draw()
 
 class HistoryPage(ttk.Frame):
-    # ... bez zmian ...
+    """Strona z historią transakcji."""
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
-        trans_frame = ttk.LabelFrame(self, text="Historia transakcji", padding="10")
-        trans_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.trans_frame = ttk.LabelFrame(self, text="Historia transakcji", padding="10")
+        self.trans_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         cols = ('ID', 'Symbol', 'Typ', 'Rodzaj', 'Ilość', 'Cena', 'Wartość', 'Zrealizowany Z/S', 'Data')
-        self.tree = ttk.Treeview(trans_frame, columns=cols, show='headings')
+        button_frame = ttk.Frame(self.trans_frame)
+        button_frame.pack(fill=tk.X, pady=(0, 5))
+        export_button = ttk.Button(button_frame, text="Eksportuj do CSV", command=self.export_to_csv)
+        export_button.pack(side=tk.RIGHT)
+        self.tree = ttk.Treeview(self.trans_frame, columns=cols, show='headings')
         for col in cols: self.tree.heading(col, text=col)
-        self.tree.column('ID', width=40); self.tree.column('Ilość', anchor=tk.E); self.tree.column('Cena', anchor=tk.E)
-        self.tree.column('Wartość', anchor=tk.E); self.tree.column('Zrealizowany Z/S', anchor=tk.E)
+        scrollbar = ttk.Scrollbar(self.trans_frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.tree.pack(fill=tk.BOTH, expand=True)
+        self.trans_frame.bind("<Configure>", self.on_resize)
+
+    def on_resize(self, event):
+        width = event.width - 20
+        self.tree.column('ID', width=int(width*0.05)); self.tree.column('Symbol', width=int(width*0.15))
+        self.tree.column('Typ', width=int(width*0.15)); self.tree.column('Rodzaj', width=int(width*0.10))
+        self.tree.column('Ilość', width=int(width*0.15), anchor=tk.E); self.tree.column('Cena', width=int(width*0.10), anchor=tk.E)
+        self.tree.column('Wartość', width=int(width*0.10), anchor=tk.E); self.tree.column('Zrealizowany Z/S', width=int(width*0.10), anchor=tk.E)
+        self.tree.column('Data', width=int(width*0.10), anchor=tk.CENTER)
+
     def refresh(self, transactions, summary, currency_symbol):
         for item in self.tree.get_children(): self.tree.delete(item)
         for t in transactions:
             t_id, symbol, asset_type, trans_type, quantity, price, date = t
             pnl_str = f"{currency_symbol}{summary['realized_pnl_per_sale'].get(t_id, 0):.2f}" if trans_type == 'sell' else ""
-            self.tree.insert('', tk.END, values=(t_id, symbol, asset_type, trans_type, f"{quantity:.6f}", f"{currency_symbol}{price:.2f}", f"{currency_symbol}{(quantity*price):.2f}", pnl_str, date))
+            self.tree.insert('', tk.END, values=(t_id, symbol, asset_type.capitalize(), trans_type.capitalize(), f"{quantity:.6f}", f"{currency_symbol}{price:.2f}", f"{currency_symbol}{(quantity*price):.2f}", pnl_str, date))
+
+    def export_to_csv(self):
+        transactions = database.get_all_transactions()
+        if not transactions: self.controller.show_toast("Brak transakcji do wyeksportowania."); return
+        filepath = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("Pliki CSV", "*.csv"), ("Wszystkie pliki", "*.*")], title="Zapisz historię transakcji jako...")
+        if not filepath: return
+        try:
+            with open(filepath, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow(['ID', 'Symbol', 'Typ Aktywa', 'Typ Transakcji', 'Ilość', 'Cena za Jednostkę', 'Data Transakcji'])
+                for t in transactions: writer.writerow(t)
+            self.controller.show_toast(f"Pomyślnie wyeksportowano do {filepath.split('/')[-1]}")
+        except Exception as e:
+            messagebox.showerror("Błąd eksportu", f"Nie udało się zapisać pliku.\nBłąd: {e}")
+
+class MarketPage(ttk.Frame):
+    """Strona z aktualnymi danymi rynkowymi."""
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+        header_frame = ttk.Frame(self)
+        header_frame.pack(fill=tk.X, padx=10, pady=10)
+        ttk.Button(header_frame, text="Odśwież Dane Rynkowe", command=self.refresh_market_data).pack(side=tk.RIGHT)
+        self.notebook = ttk.Notebook(self)
+        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+        self.market_tabs = {}
+        self.market_tabs['kryptowaluta'] = self.create_market_tab('Kryptowaluty', ('Ranking', 'Nazwa', 'Symbol', 'Cena (USD)', 'Zmiana 24h', 'Kapitalizacja Rynkowa'))
+        self.market_tabs['akcja'] = self.create_market_tab('Akcje', ('Nazwa', 'Symbol', 'Cena (USD)', 'Zmiana 24h', 'Kapitalizacja Rynkowa'))
+        self.market_tabs['waluta'] = self.create_market_tab('Waluty', ('Nazwa', 'Symbol', 'Cena (USD)', 'Zmiana 24h'))
+
+    def create_market_tab(self, name, columns):
+        tab = ttk.Frame(self.notebook)
+        self.notebook.add(tab, text=name)
+        tree = ttk.Treeview(tab, columns=columns, show='headings')
+        for col in columns: tree.heading(col, text=col)
+        tree.pack(fill=tk.BOTH, expand=True)
+        return tree
+
+    def refresh_market_data(self):
+        self.controller.show_toast("Pobieranie danych rynkowych...")
+        self.update_crypto_data()
+        self.update_yahoo_data()
+        self.controller.show_toast("Dane rynkowe zaktualizowane.")
+
+    def update_crypto_data(self):
+        tree = self.market_tabs['kryptowaluta']
+        for item in tree.get_children(): tree.delete(item)
+        data = api_handler.get_crypto_market_data(limit=100)
+        for i, coin in enumerate(data, 1):
+            price = f"${coin.get('price', 0):,.2f}"
+            change = f"{coin.get('change_24h', 0):.2f}%"
+            market_cap = f"${coin.get('market_cap', 0):,}"
+            values = (i, coin.get('name'), coin.get('symbol'), price, change, market_cap)
+            tree.insert('', tk.END, values=values, tags=("green" if coin.get('change_24h', 0) >= 0 else "red",))
+        tree.tag_configure("green", foreground="green"); tree.tag_configure("red", foreground="red")
+
+    def update_yahoo_data(self):
+        tree_stocks = self.market_tabs['akcja']
+        for item in tree_stocks.get_children(): tree_stocks.delete(item)
+        stock_data = api_handler.get_yahoo_market_data(list(instruments.get_predefined_stocks().keys()))
+        for stock in stock_data:
+            price = f"${stock.get('price', 0):,.2f}"
+            change = f"{stock.get('change_24h', 0):.2f}%"
+            market_cap = f"${stock.get('market_cap', 0):,}" if stock.get('market_cap') else "N/A"
+            values = (stock.get('name'), stock.get('symbol'), price, change, market_cap)
+            tree_stocks.insert('', tk.END, values=values, tags=("green" if stock.get('change_24h', 0) >= 0 else "red",))
+        tree_stocks.tag_configure("green", foreground="green"); tree_stocks.tag_configure("red", foreground="red")
+        tree_currencies = self.market_tabs['waluta']
+        for item in tree_currencies.get_children(): tree_currencies.delete(item)
+        currency_data = api_handler.get_yahoo_market_data(list(instruments.get_predefined_currencies().keys()))
+        for curr in currency_data:
+            price = f"{curr.get('price', 0):,.4f}"
+            change = f"{curr.get('change_24h', 0):.2f}%"
+            values = (curr.get('name'), curr.get('symbol'), price, change)
+            tree_currencies.insert('', tk.END, values=values, tags=("green" if curr.get('change_24h', 0) >= 0 else "red",))
+        tree_currencies.tag_configure("green", foreground="green"); tree_currencies.tag_configure("red", foreground="red")
 
 # --- Główna Klasa Aplikacji ---
 
@@ -242,6 +316,7 @@ class App(tk.Tk):
         self.create_widgets()
         self.build_instrument_list()
         self.refresh_all_data()
+        self.frames["MarketPage"].refresh_market_data()
 
     def create_widgets(self):
         header_frame = ttk.Frame(self, style='Card.TFrame')
@@ -260,12 +335,12 @@ class App(tk.Tk):
         page_container = ttk.Frame(main_container)
         page_container.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         page_container.grid_rowconfigure(0, weight=1); page_container.grid_columnconfigure(0, weight=1)
-        for name, F in {"Dashboard": DashboardPage, "Dodaj Transakcję": AddTransactionPage, "Alokacja": AllocationPage, "Historia": HistoryPage}.items():
+        for name, F in {"Strona Główna": MainPage, "Dodaj Transakcję": AddTransactionPage, "Wykresy": ChartsPage, "Rynek": MarketPage, "Historia": HistoryPage}.items():
             frame = F(page_container, self)
             self.frames[F.__name__] = frame
             frame.grid(row=0, column=0, sticky="nsew")
             ttk.Button(nav_frame, text=name, command=lambda f=F.__name__: self.show_page(f)).pack(fill=tk.X, pady=4, padx=5)
-        self.show_page("DashboardPage")
+        self.show_page("MainPage")
 
     def build_instrument_list(self):
         print("Budowanie listy instrumentów...")
@@ -298,10 +373,17 @@ class App(tk.Tk):
         if not prices and transactions: messagebox.showwarning("Błąd API", "Nie udało się pobrać aktualnych cen.")
         summary = calculator.calculate_portfolio_summary(transactions, prices)
         currency_symbol = self.get_currency_symbol()
-        self.frames["DashboardPage"].refresh(summary, currency_symbol)
-        # self.frames["AddTransactionPage"].update_symbol_combobox(self.all_instruments_map)
-        self.frames["AllocationPage"].refresh(summary)
+        self.frames["MainPage"].refresh(summary, currency_symbol)
+        self.frames["ChartsPage"].refresh(summary)
         self.frames["HistoryPage"].refresh(transactions, summary, currency_symbol)
+
+    def show_toast(self, message):
+        toast = tk.Toplevel(self)
+        toast.wm_overrideredirect(True)
+        toast.wm_geometry(f"+{self.winfo_x()+self.winfo_width()//2-100}+{self.winfo_y()+self.winfo_height()-100}")
+        label = ttk.Label(toast, text=message, padding=10, style="Success.TLabel")
+        label.pack()
+        toast.after(2000, toast.destroy)
 
 if __name__ == '__main__':
     app = App()
