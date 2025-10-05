@@ -146,15 +146,15 @@ class App(tk.Tk):
         self.tree.heading('Data', text='Data')
 
         # Ustawienie szerokości kolumn
-        for col in self.tree['columns']:
-            self.tree.column(col, width=110, anchor=tk.CENTER)
-        self.tree.column('ID', width=40)
-        self.tree.column('Symbol', anchor=tk.W)
-        self.tree.column('Ilość', anchor=tk.E)
-        self.tree.column('Cena zakupu', anchor=tk.E)
-        self.tree.column('Aktualna cena', anchor=tk.E)
-        self.tree.column('Wartość', anchor=tk.E)
-        self.tree.column('Data', width=150)
+        self.tree.column('ID', width=40, anchor=tk.CENTER)
+        self.tree.column('Symbol', width=100, anchor=tk.W)
+        self.tree.column('Typ', width=120, anchor=tk.W)
+        self.tree.column('Rodzaj', width=80, anchor=tk.CENTER)
+        self.tree.column('Ilość', width=100, anchor=tk.E)
+        self.tree.column('Cena', width=100, anchor=tk.E)
+        self.tree.column('Wartość', width=120, anchor=tk.E)
+        self.tree.column('Zrealizowany Z/S', width=120, anchor=tk.E)
+        self.tree.column('Data', width=150, anchor=tk.CENTER)
 
         self.tree.pack(fill=tk.BOTH, expand=True)
 
