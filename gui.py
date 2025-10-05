@@ -283,10 +283,11 @@ class App(tk.Tk):
                   title_fontproperties={'color': 'white', 'weight': 'bold'})
 
         else:
-            self.ax.pie([1], labels=['Brak danych'],
-                        labelcolor='white',
+            _, texts = self.ax.pie([1], labels=['Brak danych'],
                         colors=['#3C3F41'],
                         startangle=90)
+            for text in texts:
+                text.set_color('white')
 
         self.ax.axis('equal')
         self.canvas.draw()
