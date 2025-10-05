@@ -274,13 +274,16 @@ class App(tk.Tk):
             self.fig.gca().add_artist(centre_circle)
 
             # Dodanie legendy z dynamicznym tytułem
-            self.ax.legend(wedges, labels,
+            legend = self.ax.legend(wedges, labels,
                   title=title,
                   loc="center left",
                   bbox_to_anchor=(1, 0, 0.5, 1),
                   frameon=False, # Bez ramki
                   labelcolor='white',
-                  title_fontproperties={'color': 'white', 'weight': 'bold'})
+                  title_fontproperties={'weight': 'bold'}) # Usunięto nieprawidłowy argument 'color'
+
+            # Ustawienie koloru tytułu legendy we właściwy sposób
+            legend.get_title().set_color('white')
 
         else:
             _, texts = self.ax.pie([1], labels=['Brak danych'],
