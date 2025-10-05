@@ -21,7 +21,9 @@ def calculate_portfolio_summary(transactions, prices):
             'unrealized_pnl_percent': 0.0,
             'holdings': {},
             'allocation_by_asset': {},
-            'allocation_by_type': {}
+            'allocation_by_type': {},
+            'total_realized_pnl': 0.0,
+            'realized_pnl_per_sale': {}
         }
 
     # Konwersja na DataFrame dla łatwiejszych obliczeń
