@@ -12,29 +12,47 @@ CACHE_TIMESTAMP = 0
 CACHE_DURATION = 3600  # 1 godzina
 
 def get_coingecko_symbol_map():
+    """
+    Pobiera i cachuje listę 1000 najpopularniejszych kryptowalut wg kapitalizacji.
+    """
     global COIN_LIST_CACHE, CACHE_TIMESTAMP
     if COIN_LIST_CACHE and (time.time() - CACHE_TIMESTAMP < CACHE_DURATION):
         return COIN_LIST_CACHE
     try:
-        response = requests.get("https://api.coingecko.com/api/v3/coins/list")
-        response.raise_for_status()
-        COIN_LIST_CACHE = {coin['symbol'].lower(): coin['id'] for coin in response.json()}
+        print("Pobieranie listy 1000 najpopularniejszych kryptowalut z CoinGecko...")
+        # Pobieramy 4 strony po 250 monet, aby uzyskać 1000
+        all_coins = []
+        for page in range(1, 5):
+            url = f"https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page={page}"
+            response = requests.get(url)
+            response.raise_for_status()
+            all_coins.extend(response.json())
+
+        COIN_LIST_CACHE = {coin['symbol'].lower(): (coin['id'], coin['name']) for coin in all_coins}
         CACHE_TIMESTAMP = time.time()
+        print("Pobrano i zcachowano listę kryptowalut.")
         return COIN_LIST_CACHE
-    except requests.RequestException:
+    except requests.RequestException as e:
+        print(f"Błąd CoinGecko API: {e}")
         return None
 
 def get_crypto_prices_usd(symbols):
     if not symbols: return {}
     symbol_map = get_coingecko_symbol_map()
     if not symbol_map: return {}
-    ids = [symbol_map[s.lower()] for s in symbols if s.lower() in symbol_map]
-    if not ids: return {}
+
+    # Pobieramy ID monet (pierwszy element krotki), a nie całą krotkę
+    ids_to_fetch = [symbol_map[s.lower()][0] for s in symbols if s.lower() in symbol_map]
+    if not ids_to_fetch: return {}
+
     try:
-        response = requests.get(f"https://api.coingecko.com/api/v3/simple/price?ids={','.join(ids)}&vs_currencies=usd")
-        prices = response.json()
-        id_map = {v: k.upper() for k, v in symbol_map.items()}
-        return {id_map[id]: data['usd'] for id, data in prices.items()}
+        response = requests.get(f"https://api.coingecko.com/api/v3/simple/price?ids={','.join(ids_to_fetch)}&vs_currencies=usd")
+        response.raise_for_status()
+        prices_data = response.json()
+
+        # Tworzymy odwrotną mapę: id -> SYMBOL
+        id_to_symbol_map = {v[0]: k.upper() for k, v in symbol_map.items()}
+        return {id_to_symbol_map[id]: data['usd'] for id, data in prices_data.items() if id in id_to_symbol_map}
     except requests.RequestException:
         return {}
 
